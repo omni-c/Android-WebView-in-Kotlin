@@ -11,6 +11,19 @@ jobs:
     - name: Lấy mã nguồn
       uses: actions/checkout@v3
 
+    - name: Máy chủ tự động Tải & Nhúng Stockfish (Bypass Limit)
+      run: |
+        # Tạo thư mục assets nếu chưa có
+        mkdir -p app/src/main/assets
+        # Tải thẳng file tar từ máy chủ Stockfish chính thức
+        wget https://github.com/official-stockfish/Stockfish/releases/latest/download/stockfish-android-armv8.tar -O stockfish.tar
+        # Giải nén
+        tar -xf stockfish.tar
+        # Tự động tìm file nhị phân và copy vào ruột App
+        find . -type f -name "*stockfish-android-armv8*" -exec mv {} app/src/main/assets/stockfish \;
+        # Cấp quyền chạy
+        chmod +x app/src/main/assets/stockfish
+
     - name: Cài đặt JDK 17
       uses: actions/setup-java@v3
       with:
