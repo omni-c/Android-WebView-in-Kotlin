@@ -13,18 +13,23 @@ class StockfishBridge {
     private var writer: BufferedWriter? = null
 
     fun startEngine(binaryPath: String) {
-        thread(start = true, priority = Thread.MIN_PRIORITY) { // Đặt độ ưu tiên thấp nhất để không tranh giành với màn hình hiển thị
+        // Vẫn giữ mức ưu tiên thấp để không làm lag màn hình Lichess
+        thread(start = true, priority = Thread.MIN_PRIORITY) { 
             try {
                 process = ProcessBuilder(binaryPath).start()
                 reader = BufferedReader(InputStreamReader(process!!.inputStream))
                 writer = BufferedWriter(OutputStreamWriter(process!!.outputStream))
                 
-                // BẬT CHẾ ĐỘ THÚ DỮ NHƯNG CÓ KIỂM SOÁT
                 sendUci("uci")
-                // Đa số điện thoại có 8 nhân. Cho SF18 dùng 6 nhân, CHỪA LẠI 2 NHÂN để hệ điều hành vuốt chạm không bị lag.
+                // 1. ÉP KÍCH HOẠT MẠNG NƠ-RON (Nguồn gốc của 4000+ Elo)
+                sendUci("setoption name Use NNUE value true")
+                
+                // 2. BUNG SỨC MẠNH CPU (Dùng 6 nhân, chừa 2 nhân cho điện thoại mượt)
                 sendUci("setoption name Threads value 6") 
-                // Bơm 256MB RAM (hoặc 512MB) để nó tính toán các biến thể cực sâu mà không phải tính lại
-                sendUci("setoption name Hash value 256")   
+                
+                // 3. BƠM 1GB RAM (1024MB) ĐỂ NHỚ CÁC BIẾN THỂ SIÊU SÂU
+                sendUci("setoption name Hash value 1024")   
+                
                 sendUci("isready")
             } catch (e: Exception) { e.printStackTrace() }
         }
@@ -39,10 +44,10 @@ class StockfishBridge {
     fun calculateMove(fen: String): String {
         sendUci("position fen $fen")
         
-        // BÍ QUYẾT TỐI THƯỢNG: Không dùng "go depth" nữa. Dùng "go movetime".
-        // Cho nó suy nghĩ tối đa trong 400 mili-giây (0.4 giây) rồi bắt buộc trả kết quả. 
-        // Với 6 nhân CPU, 400ms là đủ để SF18 nhảy vọt lên Depth 20-22 một cách dễ dàng.
-        sendUci("go movetime 400") 
+        // 4. CHỐT HẠ ĐỘ SÂU QUÁI VẬT: Depth 20
+        // Tùy độ phức tạp của bàn cờ, nó sẽ mất từ 1.5 giây đến 3.5 giây để nhả nước đi.
+        // Ở độ sâu này, nó nhìn thấu mọi cạm bẫy và đánh không có đối thủ.
+        sendUci("go depth 20") 
         
         var line: String?
         try {
