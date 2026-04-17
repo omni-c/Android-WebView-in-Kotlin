@@ -16,28 +16,23 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // XÓA GIAO DIỆN CŨ CỦA TEMPLATE, TẠO WEBVIEW TOÀN MÀN HÌNH
         webView = WebView(this)
         setContentView(webView)
 
-        // KHỞI TẠO VÀ CHÉP STOCKFISH RA BỘ NHỚ THIẾT BỊ
         engineBridge = StockfishBridge()
         val binaryPath = filesDir.absolutePath + "/stockfish"
         copyStockfishToStorage(binaryPath)
         engineBridge.startEngine(binaryPath)
 
-        // CẤU HÌNH TRÌNH DUYỆT
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
         }
         
-        // KẾT NỐI BỘ NÃO STOCKFISH VÀO TRÌNH DUYỆT BẰNG JAVASCRIPT INTERFACE
         webView.addJavascriptInterface(engineBridge, "AndroidBot")
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
-                // TIÊM SCRIPT NGAY KHI TRANG LICHESS TẢI XONG
                 injectBotScript()
             }
         }
@@ -54,7 +49,7 @@ class MainActivity : AppCompatActivity() {
                         input.copyTo(output)
                     }
                 }
-                destFile.setExecutable(true) // Cấp quyền chạy file nhị phân
+                destFile.setExecutable(true)
             }
         } catch (e: Exception) { e.printStackTrace() }
     }
@@ -99,7 +94,6 @@ class MainActivity : AppCompatActivity() {
                     let w = document.querySelector('.cg-wrap');
                     if (!b || !w) return;
 
-                    // KHÔNG QUÉT FEN NẾU TAY ĐANG CHẠM KÉO QUÂN CỜ (CHỐNG KHỰNG GIAO DIỆN)
                     if (b.classList.contains('dragging')) return;
 
                     let isB = w.classList.contains('orientation-black'); 
@@ -136,7 +130,6 @@ class MainActivity : AppCompatActivity() {
                         isCalculating = true;
                         lastFen = fen;
                         
-                        // CHẠY BẤT ĐỒNG BỘ, NHẢ LUỒNG GIAO DIỆN RA NGAY LẬP TỨC
                         setTimeout(() => {
                             let move = window.AndroidBot.calculateMove(fen);
                             if (move && move !== 'none') { 
@@ -148,5 +141,9 @@ class MainActivity : AppCompatActivity() {
                     } else if (window.currentMove) {
                         drawArrow(window.currentMove);
                     }
-                }, 300); // NHỊP THỞ 30
-                
+                }, 300);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+}
