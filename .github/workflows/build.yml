@@ -1,0 +1,31 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Lấy mã nguồn
+      uses: actions/checkout@v3
+
+    - name: Cài đặt JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Cấp quyền chạy Gradle
+      run: chmod +x gradlew
+
+    - name: Tiến hành Build APK
+      run: ./gradlew assembleDebug
+
+    - name: Xuất file APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: Native-ChessBot
+        path: app/build/outputs/apk/debug/*.apk
+        
