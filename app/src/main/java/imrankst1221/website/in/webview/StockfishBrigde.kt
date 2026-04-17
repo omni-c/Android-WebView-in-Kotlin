@@ -1,4 +1,4 @@
-package com.mac.isaac.webview
+package imrankst1221.website.`in`.webview
 
 import android.webkit.JavascriptInterface
 import java.io.BufferedReader
