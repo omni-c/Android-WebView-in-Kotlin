@@ -16,28 +16,32 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // TẠO WEBVIEW TOÀN MÀN HÌNH - XÓA BỎ GIAO DIỆN CŨ CỦA TEMPLATE
+        // XÓA GIAO DIỆN CŨ CỦA TEMPLATE, TẠO WEBVIEW TOÀN MÀN HÌNH
         webView = WebView(this)
         setContentView(webView)
 
-        // CHÉP VÀ KÍCH HOẠT STOCKFISH NATIVE
+        // KHỞI TẠO VÀ CHÉP STOCKFISH RA BỘ NHỚ THIẾT BỊ
         engineBridge = StockfishBridge()
         val binaryPath = filesDir.absolutePath + "/stockfish"
         copyStockfishToStorage(binaryPath)
         engineBridge.startEngine(binaryPath)
 
+        // CẤU HÌNH TRÌNH DUYỆT
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
         }
         
+        // KẾT NỐI BỘ NÃO STOCKFISH VÀO TRÌNH DUYỆT BẰNG JAVASCRIPT INTERFACE
         webView.addJavascriptInterface(engineBridge, "AndroidBot")
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
+                // TIÊM SCRIPT NGAY KHI TRANG LICHESS TẢI XONG
                 injectBotScript()
             }
         }
+        
         webView.loadUrl("https://lichess.org/")
     }
 
@@ -50,7 +54,7 @@ class MainActivity : AppCompatActivity() {
                         input.copyTo(output)
                     }
                 }
-                destFile.setExecutable(true)
+                destFile.setExecutable(true) // Cấp quyền chạy file nhị phân
             }
         } catch (e: Exception) { e.printStackTrace() }
     }
@@ -59,7 +63,13 @@ class MainActivity : AppCompatActivity() {
         val js = """
             javascript:(function() {
                 let lastFen = null;
-                function isMyTurn() { return document.body.innerText.includes('Đến lượt bạn') || (document.querySelector('cg-board') && document.querySelector('cg-board').classList.contains('manipulable')); }
+                let isCalculating = false;
+
+                function isMyTurn() { 
+                    return document.body.innerText.includes('Đến lượt bạn') || 
+                           (document.querySelector('cg-board') && document.querySelector('cg-board').classList.contains('manipulable')); 
+                }
+
                 function drawArrow(move) {
                     let board = document.querySelector('cg-board'); if(!board) return;
                     let svg = document.getElementById('sf-svg');
@@ -74,24 +84,69 @@ class MainActivity : AppCompatActivity() {
                     '<line x1="'+(f1*sqW+sqW/2)+'%" y1="'+(r1*sqW+sqW/2)+'%" x2="'+(f2*sqW+sqW/2)+'%" y2="'+(r2*sqW+sqW/2)+'%" stroke="#000" stroke-width="3.5%" stroke-linecap="butt"/>' +
                     '<line x1="'+(f1*sqW+sqW/2)+'%" y1="'+(r1*sqW+sqW/2)+'%" x2="'+(f2*sqW+sqW/2)+'%" y2="'+(r2*sqW+sqW/2)+'%" stroke="#4f803c" stroke-width="2.2%" stroke-linecap="butt" marker-end="url(#ah)"/>';
                 }
+
                 setInterval(() => {
-                    drawArrow(window.currentMove);
-                    if(!isMyTurn()) { lastFen = null; window.currentMove = null; return; }
-                    let b = document.querySelector('cg-board'); let w = document.querySelector('.cg-wrap');
-                    if(!b || !w) return;
-                    let isB = w.classList.contains('orientation-black'); let ps = b.querySelectorAll('piece');
-                    let arr = Array(8).fill(null).map(()=>Array(8).fill(null)); let sq = b.clientWidth/8;
-                    ps.forEach(p => { let m = p.style.transform.match(/translate(?:3d)?\(([-.\d]+)(px|%)[,\s]+([-.\d]+)(px|%)/); if(m){ let x=Math.round(parseFloat(m[1])/(m[2]==='%'?12.5:sq)); let y=Math.round(parseFloat(m[3])/(m[4]==='%'?12.5:sq)); if(isB){x=7-x; y=7-y;} let c=p.classList.contains('knight')?'N':p.classList.contains('bishop')?'B':p.classList.contains('rook')?'R':p.classList.contains('queen')?'Q':p.classList.contains('king')?'K':'P'; if(p.classList.contains('black')) c=c.toLowerCase(); if(y>=0&&y<8&&x>=0&&x<8) arr[y][x]=c; } });
-                    let fen = ''; for(let r=0;r<8;r++){let e=0;for(let c=0;c<8;c++){if(arr[r][c]){if(e>0){fen+=e;e=0;}fen+=arr[r][c];}else e++;}if(e>0)fen+=e;if(r<7)fen+='/';}
-                    fen += (isB?' b':' w') + ' KQkq - 0 1';
-                    if(fen !== lastFen) {
-                        lastFen = fen;
-                        let move = window.AndroidBot.calculateMove(fen);
-                        if(move && move !== 'none') { window.currentMove = move; }
+                    if (isCalculating) return;
+                    
+                    if (!isMyTurn()) { 
+                        lastFen = null; 
+                        window.currentMove = null;
+                        drawArrow(null);
+                        return; 
                     }
-                }, 150);
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(js, null)
-    }
-}
+
+                    let b = document.querySelector('cg-board'); 
+                    let w = document.querySelector('.cg-wrap');
+                    if (!b || !w) return;
+
+                    // KHÔNG QUÉT FEN NẾU TAY ĐANG CHẠM KÉO QUÂN CỜ (CHỐNG KHỰNG GIAO DIỆN)
+                    if (b.classList.contains('dragging')) return;
+
+                    let isB = w.classList.contains('orientation-black'); 
+                    let ps = b.querySelectorAll('piece');
+                    let arr = Array(8).fill(null).map(()=>Array(8).fill(null)); 
+                    let sq = b.clientWidth/8;
+                    ps.forEach(p => { 
+                        let m = p.style.transform.match(/translate(?:3d)?\(([-.\d]+)(px|%)[,\s]+([-.\d]+)(px|%)/); 
+                        if(m){ 
+                            let x=Math.round(parseFloat(m[1])/(m[2]==='%'?12.5:sq)); 
+                            let y=Math.round(parseFloat(m[3])/(m[4]==='%'?12.5:sq)); 
+                            if(isB){x=7-x; y=7-y;} 
+                            let c=p.classList.contains('knight')?'N':p.classList.contains('bishop')?'B':p.classList.contains('rook')?'R':p.classList.contains('queen')?'Q':p.classList.contains('king')?'K':'P'; 
+                            if(p.classList.contains('black')) c=c.toLowerCase(); 
+                            if(y>=0&&y<8&&x>=0&&x<8) arr[y][x]=c; 
+                        } 
+                    });
+                    
+                    let fen = ''; 
+                    for(let r=0;r<8;r++){
+                        let e=0;
+                        for(let c=0;c<8;c++){
+                            if(arr[r][c]){
+                                if(e>0){fen+=e;e=0;}
+                                fen+=arr[r][c];
+                            }else e++;
+                        }
+                        if(e>0)fen+=e;
+                        if(r<7)fen+='/';
+                    }
+                    fen += (isB?' b':' w') + ' KQkq - 0 1';
+
+                    if (fen !== lastFen) {
+                        isCalculating = true;
+                        lastFen = fen;
+                        
+                        // CHẠY BẤT ĐỒNG BỘ, NHẢ LUỒNG GIAO DIỆN RA NGAY LẬP TỨC
+                        setTimeout(() => {
+                            let move = window.AndroidBot.calculateMove(fen);
+                            if (move && move !== 'none') { 
+                                window.currentMove = move;
+                                drawArrow(move);
+                            }
+                            isCalculating = false;
+                        }, 10);
+                    } else if (window.currentMove) {
+                        drawArrow(window.currentMove);
+                    }
+                }, 300); // NHỊP THỞ 30
+                
